@@ -8,14 +8,17 @@
  * v1.4 2013-10-18 - Daniel Schreiber
  *
  * TODOS:
- * a) incremental backup - especially for files
+ * a) incremental backup - especially for files (done)
  * b) non item/comment scoped files e.g. app/space..
+ * c) optimize fetching comments
  *
  *  Please post something nice on your website or blog, and link back to www.podiomail.com if you find this script useful.
  * ===================================================================== */
 
 #require_once('podio-php-master/PodioAPI.php'); // include the php Podio Master Class
 require_once('../../libs/podio-php-master/PodioAPI.php'); // include the php Podio Master Class
+
+$start = time();
 
 global $config;
 $config_command_line = getopt("fvs:l:", array("backupTo:", "podioClientId:", "podioClientSecret:", "podioUser:", "podioPassword:", "help"));
@@ -69,6 +72,8 @@ if (check_config()) {
 
     return -1;
 }
+$total_time = (time() - $start)/60;
+echo "Duration: $total_time minutes.\n";
 
 function check_backup_folder() {
     global $config;
@@ -282,7 +287,7 @@ function do_backup($downloadFiles) {
                                             $link = downloadFileIfHostedAtPodio($path_item, $file);
                                             # $link is relative to $path_item (if downloaded):
                                             if (!(stripos($link, "http") == 0)) {
-                                                $link = $folder_item . '/' . $link;
+                                                $link = $folder_item . '/' . $link;//TODO
                                             }
                                             $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
                                         }
@@ -467,7 +472,7 @@ function contacts2text($contacts) {
  * @return String valid dir/file name
  */
 function fixDirName($name) {
-    $name = preg_replace("/[^a-zA-Z0-9_-]/", '', $name);
+    $name = preg_replace("/[^.a-zA-Z0-9_-]/", '', $name);
 
     $name = substr($name, 0, 20);
     return $name;
@@ -571,7 +576,7 @@ function downloadFileIfHostedAtPodio($folder, $file) {
                 file_put_contents($folder . '/' . $filename, $file->get_raw());
 //                echo "A\n";
                 RateLimitChecker::preventTimeOut();
-                $link = $file->name;
+                $link = $filename;
 
                 $filestore[$file->file_id] = getRelativePath(realpath($config['backupTo'] . '/'), realpath($folder . '/' . $filename));
                 file_put_contents($filenameFilestore, serialize($filestore));

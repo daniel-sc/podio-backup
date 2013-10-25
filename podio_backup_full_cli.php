@@ -17,6 +17,7 @@
 
 #require_once('podio-php-master/PodioAPI.php'); // include the php Podio Master Class
 require_once('../../libs/podio-php-master/PodioAPI.php'); // include the php Podio Master Class
+require_once('RelativePaths.php');
 
 $start = time();
 
@@ -286,8 +287,8 @@ function do_backup($downloadFiles) {
                                         if ($file->context['type'] == 'item' && $file->context['id'] == $item->item_id) {
                                             $link = downloadFileIfHostedAtPodio($path_item, $file);
                                             # $link is relative to $path_item (if downloaded):
-                                            if (!(stripos($link, "http") == 0)) {
-                                                $link = $folder_item . '/' . $link;//TODO
+                                            if (!preg_match("/^http/i", $link)) {
+                                                $link = RelativePaths::getRelativePath($path_app, $path_item.'/'.$link);
                                             }
                                             $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
                                         }
@@ -299,8 +300,8 @@ function do_backup($downloadFiles) {
                                         foreach ($item->files as $file) {
                                             $link = downloadFileIfHostedAtPodio($path_item, $file);
                                             # $link is relative to $path_item (if downloaded):
-                                            if (!(stripos($link, "http") == 0)) {
-                                                $link = $folder_item . '/' . $link;
+                                            if (!preg_match("/^http/i", $link)) {
+                                                $link = RelativePaths::getRelativePath($path_app, $path_item.'/'.$link);
                                             }
                                             $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
                                         }
@@ -320,8 +321,8 @@ function do_backup($downloadFiles) {
                                         foreach ($comment->files as $file) {
                                             $link = downloadFileIfHostedAtPodio($path_item, $file);
                                             # $link is relative to $path_item (if downloaded):
-                                            if (!(stripos($link, "http") == 0)) {
-                                                $link = $folder_item . '/' . $link;
+                                            if (!preg_match("/^http/i", $link)) {
+                                                $link = RelativePaths::getRelativePath($path_app, $path_item.'/'.$link);
                                             }
                                             $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
                                         }
@@ -568,7 +569,7 @@ function downloadFileIfHostedAtPodio($folder, $file) {
 
             echo "DEBUG: Detected duplicate download for file: $file->file_id\n";
             $existing_file = realpath($config['backupTo'] . '/' . $filestore[$file->file_id]);
-            $link = getRelativePath(realpath($folder . '/'), $existing_file);
+            $link = RelativePaths::getRelativePath($folder, $existing_file);
         } else {
 
             try {
@@ -578,7 +579,7 @@ function downloadFileIfHostedAtPodio($folder, $file) {
                 RateLimitChecker::preventTimeOut();
                 $link = $filename;
 
-                $filestore[$file->file_id] = getRelativePath(realpath($config['backupTo'] . '/'), realpath($folder . '/' . $filename));
+                $filestore[$file->file_id] = RelativePaths::getRelativePath($config['backupTo'], $folder . '/' . $filename);
                 file_put_contents($filenameFilestore, serialize($filestore));
             } catch (PodioBadRequestError $e) {
                 echo $e->body;   # Parsed JSON response from the API
@@ -592,41 +593,6 @@ function downloadFileIfHostedAtPodio($folder, $file) {
         #echo "Warning: Not downloading file hosted by ".$file->hosted_by."\n";
     }
     return $link;
-}
-
-/**
- * taken from http://stackoverflow.com/questions/2637945/getting-relative-path-from-absolute-path-in-php
- */
-function getRelativePath($from, $to) {
-    // some compatibility fixes for Windows paths
-    $from = is_dir($from) ? rtrim($from, '\/') . '/' : $from;
-    $to = is_dir($to) ? rtrim($to, '\/') . '/' : $to;
-    $from = str_replace('\\', '/', $from);
-    $to = str_replace('\\', '/', $to);
-
-    $from = explode('/', $from);
-    $to = explode('/', $to);
-    $relPath = $to;
-
-    foreach ($from as $depth => $dir) {
-        // find first non-matching dir
-        if ($dir === $to[$depth]) {
-            // ignore this directory
-            array_shift($relPath);
-        } else {
-            // get number of remaining dirs to $from
-            $remaining = count($from) - $depth;
-            if ($remaining > 1) {
-                // add traversals up to first matching dir
-                $padLength = (count($relPath) + $remaining - 1) * -1;
-                $relPath = array_pad($relPath, $padLength, '..');
-                break;
-            } else {
-                $relPath[0] = './' . $relPath[0];
-            }
-        }
-    }
-    return implode('/', $relPath);
 }
 
 ?>

@@ -4,3 +4,10 @@
 *.jar
 *.war
 *.ear
+
+podio-php-master/
+stored_parameters.txt
+backup*
+bak*
+/nbproject/
+/out.out

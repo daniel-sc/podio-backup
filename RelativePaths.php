@@ -15,12 +15,12 @@ class RelativePaths {
      * @return String relative path
      */
     static function getRelativePath($from, $to) {
-        echo "\nDEBUG: from=$from\nto=$to\n";
+        #echo "\nDEBUG: from=$from\nto=$to\n";
         
         $from = self::realPathFix($from);
         $to = self::realPathFix($to);
 
-        echo "\nDEBUG: from=$from\nto=$to\n";
+        #echo "\nDEBUG: from=$from\nto=$to\n";
 
         //==========original:
         // some compatibility fixes for Windows paths
@@ -73,10 +73,10 @@ class RelativePaths {
                 $fileseperator = "/";
             $indexOfFileName = strrpos($path, $fileseperator);
             $fileNameLength = strlen($path) - $indexOfFileName;
-            echo "fs=$fileseperator, len=$fileNameLength, ind=$indexOfFileName\n";
+            #echo "fs=$fileseperator, len=$fileNameLength, ind=$indexOfFileName\n";
             $folder_path = substr($path, 0, $indexOfFileName);
             $filename = substr($path, $indexOfFileName + 1);
-            echo "folderpath=$folder_path, filename=$filename<<\n";
+            #echo "folderpath=$folder_path, filename=$filename<<\n";
             $result = realpath($folder_path)
                     . $fileseperator . $filename;
         }

@@ -11,14 +11,19 @@
  * a) incremental backup - especially for files (done)
  * b) non item/comment scoped files e.g. app/space..
  * c) optimize fetching comments
+ * d) are all files downloaded?
  *
  *  Please post something nice on your website or blog, and link back to www.podiomail.com if you find this script useful.
  * ===================================================================== */
 
-#require_once('podio-php-master/PodioAPI.php'); // include the php Podio Master Class
-require_once('../../libs/podio-php-master/PodioAPI.php'); // include the php Podio Master Class
-require_once('RelativePaths.php');
+require_once '../podio-php/PodioAPI.php'; // include the php Podio Master Class
 
+require_once 'RelativePaths.php';
+require_once 'RateLimitChecker.php';
+
+Podio::$debug = true;
+
+global $start;
 $start = time();
 
 global $config;
@@ -148,7 +153,7 @@ function show_success($message) {
 }
 
 function do_backup($downloadFiles) {
-    global $config, $verbose;
+    global $config, $verbose, $start;
     if ($verbose)
         echo "Warning: This script may run for a LONG time\n";
 
@@ -181,7 +186,6 @@ function do_backup($downloadFiles) {
             while (!$completed) {
                 $filter = array("limit" => $limit, 'offset' => $limit * $iteration);
                 $contacts = PodioContact::get_for_org($org->org_id, $filter);
-//                echo "B\n";
                 RateLimitChecker::preventTimeOut();
                 $contactsFile .= contacts2text($contacts);
                 $iteration++;
@@ -211,7 +215,6 @@ function do_backup($downloadFiles) {
                     else
                         $filter = array("limit" => $limit, 'offset' => $limit * $iteration, 'contact_type' => 'space');
                     $contacts = PodioContact::get_for_space($space->space_id, $filter);
-//                    echo "C\n";
                     RateLimitChecker::preventTimeOut();
                     $contactsFile .= contacts2text($contacts);
                     $iteration++;
@@ -255,7 +258,6 @@ function do_backup($downloadFiles) {
                 try {
                     #TODO: why this filter here? what about other files?
                     $appFiles = PodioFile::get_for_app($app->app_id, array('attached_to' => 'item'));
-//                    echo "D\n";
                     RateLimitChecker::preventTimeOut();
                 } catch (PodioError $e) {
                     error_log($e);
@@ -265,7 +267,6 @@ function do_backup($downloadFiles) {
                     while (!$completed) {
                         $filter = array("limit" => $limit, 'offset' => $limit * $iteration);
                         $items = PodioItem::filter($app->app_id, $filter);
-//                        echo "E\n";
                         RateLimitChecker::preventTimeOut();
                         if (is_array($items) && isset($items['items']) && is_array($items['items'])) {
                             foreach ($items['items'] as $item) {
@@ -281,9 +282,10 @@ function do_backup($downloadFiles) {
                                 $folder_item = fixDirName($item->item_id . '_' . $item->title);
                                 $path_item = $path_app . '/' . $folder_item;
                                 mkdir($path_item);
-
+                                  
                                 if ($downloadFiles) {
-                                    foreach ($appFiles as $file) {
+                                    foreach ($appFiles as $file) {                                      
+                                
                                         if ($file->context['type'] == 'item' && $file->context['id'] == $item->item_id) {
                                             $link = downloadFileIfHostedAtPodio($path_item, $file);
                                             # $link is relative to $path_item (if downloaded):
@@ -308,12 +310,10 @@ function do_backup($downloadFiles) {
                                     }
                                 }
 
-
-
                                 //TODO refactor to use less api calls:
                                 $comments = PodioComment::get_for('item', $item->item_id);
-//                                echo "F\n";
                                 RateLimitChecker::preventTimeOut();
+                                
                                 $commentsFile = "\n\nComments\n--------\n\n";
                                 foreach ($comments as $comment) {
                                     $commentsFile .= 'by ' . $comment->created_by->name . ' on ' . $comment->created_on->format('Y-m-d at H:i:s') . "\n----------------------------------------\n" . $comment->value . "\n\n\n";
@@ -330,14 +330,14 @@ function do_backup($downloadFiles) {
                                 }
                                 file_put_contents($path_item . '/' . fixDirName($item->item_id . '-' . $item->title) . '.txt', $itemFile . $commentsFile);
                                 $appFile .= $itemFile . "\n\n";
-                            }
+                                }
                             $iteration++;
                             if (sizeof($items['items']) < $limit) {
                                 $completed = true;
-                            }
+                               }
                         } else {
                             $completed = true;
-                        }
+                            }
                     }
                 } catch (PodioError $e) {
                     $appFile .= "\n\nPodio Error:\n" . $e;
@@ -345,6 +345,7 @@ function do_backup($downloadFiles) {
                 file_put_contents($path_app . '/all_items_summary.txt', $appFile);
                 $files_in_app_html .= "</table></body></html>";
                 file_put_contents($path_app . "/files_in_app.html", $files_in_app_html);
+                 
             }
         }
     }
@@ -479,59 +480,6 @@ function fixDirName($name) {
     return $name;
 }
 
-class RateLimitChecker {
-
-    /**
-     *
-     * @var int estimate for remaining rate limited calls. 
-     */
-    private static $rate_limit_estimate = 250;
-
-    /**
-     * If getting close to hitting the rate limit, this method blocks until the
-     * rate-limit count is resetted.
-     * 
-     * One might want to call this method before/after every call to the podio api.
-     * 
-     * This is a devensive approach as it supspects a rate limited call every time
-     * the header "x-rate-limit-remaining" is not set. E.g. after PodioFile->get_raw().
-     * 
-     * @global boolean $verbose
-     */
-    public static function preventTimeOut() {
-        global $verbose;
-
-        //Note: after PodioFile->get_raw() Podio::rate_limit_remaining() leads to errors, since the header is not set.
-        if (array_key_exists('x-rate-limit-remaining', Podio::$last_response->headers))
-            $remaining = Podio::$last_response->headers['x-rate-limit-remaining'];
-        else {
-            if ($verbose)
-                echo "DEBUG: estimating remaining..\n";
-            $remaining = --self::$rate_limit_estimate;
-        }
-
-
-        if (array_key_exists('x-rate-limit-limit', Podio::$last_response->headers))
-            $limit = Podio::$last_response->headers['x-rate-limit-limit'];
-        else
-            $limit = 250;
-
-        if ($limit == 250)
-            self::$rate_limit_estimate = $remaining;
-
-        if ($verbose)
-            echo "DEBUG: rate_limit=" . $limit . " remaining=" . $remaining . "\n";
-
-        if ($remaining != 0 && $remaining < 10) { //could technically be '< 1' ..
-            $minutes_till_reset = 60 - date('i');
-            echo "sleeping $minutes_till_reset minutes to prevent rate limit violation.\n";
-            sleep(60 * $minutes_till_reset);
-            self::$rate_limit_estimate = 250;
-        }
-    }
-
-}
-
 function br2nl($string) {
     $s2 = preg_replace('/\<br(\s*)?\/?\>/i', "\n", $string);
     $s3 = preg_replace('/<p>/i', "\n", $s2);
@@ -575,7 +523,6 @@ function downloadFileIfHostedAtPodio($folder, $file) {
             try {
                 $filename = fixDirName($file->name);
                 file_put_contents($folder . '/' . $filename, $file->get_raw());
-//                echo "A\n";
                 RateLimitChecker::preventTimeOut();
                 $link = $filename;
 

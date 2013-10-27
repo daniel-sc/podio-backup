@@ -10,8 +10,9 @@
  * TODOS:
  * a) incremental backup - especially for files (done)
  * b) non item/comment scoped files e.g. app/space..
- * c) optimize fetching comments
- * d) are all files downloaded?
+ * c) optimize fetching comments partly done.
+ * d) are all files downloaded? done.
+ * e) no double files..
  *
  *  Please post something nice on your website or blog, and link back to www.podiomail.com if you find this script useful.
  * ===================================================================== */
@@ -20,8 +21,12 @@ require_once '../podio-php/PodioAPI.php'; // include the php Podio Master Class
 
 require_once 'RelativePaths.php';
 require_once 'RateLimitChecker.php';
+require_once 'PodioFetchAll.php';
 
 Podio::$debug = true;
+
+gc_enable();
+ini_set("memory_limit", "200M");
 
 global $start;
 $start = time();
@@ -78,7 +83,7 @@ if (check_config()) {
 
     return -1;
 }
-$total_time = (time() - $start)/60;
+$total_time = (time() - $start) / 60;
 echo "Duration: $total_time minutes.\n";
 
 function check_backup_folder() {
@@ -152,6 +157,155 @@ function show_success($message) {
     echo "Message: " . $message . "\n";
 }
 
+/**
+ * Backups $app to a subfolder in $path
+ * 
+ * @param typ $app app to backup
+ * @param type $path in this folder a subfolder for the app will be created
+ */
+function backup_app($app, $path, $downloadFiles) {
+    $path_app = $path . '/' . fixDirName($app->config['name']);
+
+    global $verbose;
+
+    if ($verbose)
+        echo "App: " . $app->config['name'] . "\n";
+    echo "debug: MEMORY: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+
+    mkdir($path_app);
+
+    $appFile = "";
+
+    $appFiles = array();
+
+    $files_in_app_html = "<html><head><title>Files in app: " . $app->config['name'] . "</title></head><body>" .
+            "<table border=1><tr><th>name</th><th>link</th><th>context</th></tr>";
+    try {
+        #$appFiles = PodioFile::get_for_app($app->app_id, array('attached_to' => 'item'));
+        echo "debug: MEMORY before fetch   files: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+        $appFiles = PodioFetchAll::iterateApiCall('PodioFile::get_for_app', $app->app_id, array());
+        echo "debug: MEMORY after  fetch   files: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+        #var_dump($appFiles);
+        PodioFetchAll::flattenObjectsArray($appFiles, PodioFetchAll::podioElements(
+            array('file_id' => null, 'name' => null, 'link' => null, 'hosted_by' => null,
+                'context' => array('id' => NULL, 'type' => null, 'title' => null))));
+        echo "debug: MEMORY after  flatten files: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+        if ($verbose)
+            echo "fetched information for " . sizeof($appFiles) . " files in app.\n";
+    } catch (PodioError $e) {
+        error_log($e);
+    }
+
+
+    try {
+        $allitems = PodioFetchAll::iterateApiCall('PodioItem::filter', $app->app_id, array(), 500, 'items');
+
+        echo "app contains " . sizeof($allitems) . " items.\n";
+
+        echo "debug: MEMORY before xls-download : " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+
+        $step_xlsx = 500;
+        for ($i = 0; $i < sizeof($allitems); $i+=$step_xlsx) {
+            $itemFile = PodioItem::xlsx($app->app_id, array("limit" => $step_xlsx, "offset" => $i));
+            file_put_contents($path_app . '/' . $app->config['name'] . '_' . $i . '.xlsx', $itemFile);
+            unset($itemFile);
+        }
+        echo "debug: MEMORY after  xls-download : " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+
+        $before = time();
+        gc_collect_cycles();
+        echo "gc took : " . (time() - $before) . " seconds.\n";
+
+        foreach ($allitems as $item) {
+
+            if ($verbose)
+                echo " - " . $item->title . "\n";
+
+            $folder_item = fixDirName($item->item_id . '_' . $item->title);
+            $path_item = $path_app . '/' . $folder_item;
+            mkdir($path_item);
+
+            unset($itemFile);
+            $itemFile = '--- ' . $item->title . ' ---' . "\n";
+            $itemFile .= 'Item ID: ' . $item->item_id . "\n";
+            foreach ($item->fields as $field) {
+                $itemFile .= $field->label . ': ' . getFieldValue($field) . "\n";
+            }
+            $itemFile .= "\n";
+
+            if ($downloadFiles) {
+                foreach ($appFiles as $file) {
+
+                    if ($file->context['type'] == 'item' && $file->context['id'] == $item->item_id) {
+                        $link = downloadFileIfHostedAtPodio($path_item, $file);
+                        # $link is relative to $path_item (if downloaded):
+                        if (!preg_match("/^http/i", $link)) {
+                            $link = RelativePaths::getRelativePath($path_app, $path_item . '/' . $link);
+                        }
+                        $itemFile .= "File: $link\n";
+                        $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
+                    }
+                }
+            }
+
+            //TODO refactor to use less api calls: (not possible??!)
+            if ($item->comment_count > 0) {
+                #echo "comments.. (".$item->comment_count.")\n";
+                $comments = PodioComment::get_for('item', $item->item_id);
+                RateLimitChecker::preventTimeOut();
+
+                $commentsFile = "\n\nComments\n--------\n\n";
+                foreach ($comments as $comment) {
+                    $commentsFile .= 'by ' . $comment->created_by->name . ' on ' . $comment->created_on->format('Y-m-d at H:i:s') . "\n----------------------------------------\n" . $comment->value . "\n\n\n";
+                    if ($downloadFiles && isset($comment->files) && sizeof($comment->files) > 0) {
+                        foreach ($comment->files as $file) {
+                            $link = downloadFileIfHostedAtPodio($path_item, $file);
+                            # $link is relative to $path_item (if downloaded):
+                            if (!preg_match("/^http/i", $link)) {
+                                $link = RelativePaths::getRelativePath($path_app, $path_item . '/' . $link);
+                            }
+                            $commentsFile .= "File: $link\n";
+                            $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
+                        }
+                    }
+                }
+            } else {
+                $commentsFile = "\n\n[no comments]\n";
+                #echo "no comments.. (".$item->comment_count.")\n";
+            }
+            file_put_contents($path_item . '/' . fixDirName($item->item_id . '-' . $item->title) . '.txt', $itemFile . $commentsFile);
+
+            $appFile .= $itemFile . "\n\n";
+        }
+
+        //store non item/comment files:
+        if ($verbose)
+            echo "storing non item/comment files..\n";
+        $app_files_folder = 'other_files';
+        $path_app_files = $path_app . '/' . $app_files_folder;
+        mkdir($path_app_files);
+        $files_in_app_html .= "<tr><td><b>App Files</b></td><td><a href=$app_files_folder>" . $app_files_folder . "</a></td><td></td></tr>";
+        foreach ($appFiles as $file) {
+            if ($file->context['type'] != 'item' && $file->context['type'] != 'comment') {
+                echo "debug: downloading non item/comment file: $file->name\n";
+                $link = downloadFileIfHostedAtPodio($path_app_files, $file);
+                # $link is relative to $path_item (if downloaded):
+                if (!preg_match("/^http/i", $link)) {
+                    $link = RelativePaths::getRelativePath($path_app, $path_item . '/' . $link);
+                }
+                $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
+            }
+        }
+    } catch (PodioError $e) {
+        $appFile .= "\n\nPodio Error:\n" . $e;
+    }
+    file_put_contents($path_app . '/all_items_summary.txt', $appFile);
+    $files_in_app_html .= "</table></body></html>";
+    file_put_contents($path_app . "/files_in_app.html", $files_in_app_html);
+    unset($appFile);
+    unset($files_in_app_html);
+}
+
 function do_backup($downloadFiles) {
     global $config, $verbose, $start;
     if ($verbose)
@@ -163,7 +317,7 @@ function do_backup($downloadFiles) {
     $downloadedFilesIds = array();
 
     $currentdir = getcwd();
-    $timeStamp = date('YmdHi');
+    $timeStamp = date('Y-m-d_H-i');
     $backupTo = $config['backupTo'];
 
     $path_base = $backupTo . '/' . $timeStamp;
@@ -179,20 +333,9 @@ function do_backup($downloadFiles) {
         mkdir($path_org);
 
         $contactsFile = '';
-        $limit = 200;
-        $iteration = 0;
-        $completed = false;
         try {
-            while (!$completed) {
-                $filter = array("limit" => $limit, 'offset' => $limit * $iteration);
-                $contacts = PodioContact::get_for_org($org->org_id, $filter);
-                RateLimitChecker::preventTimeOut();
-                $contactsFile .= contacts2text($contacts);
-                $iteration++;
-                if (sizeof($contacts) < $limit) {
-                    $completed = true;
-                }
-            }
+            $contacts = PodioFetchAll::iterateApiCall('PodioContact::get_for_org', $org->org_id);
+            $contactsFile .= contacts2text($contacts);
         } catch (PodioError $e) {
             $contactsFile .= "\n\nPodio Error:\n" . $e;
         }
@@ -205,23 +348,13 @@ function do_backup($downloadFiles) {
             mkdir($path_space);
 
             $contactsFile = '';
-            $limit = 200;
-            $iteration = 0;
-            $completed = false;
             try {
-                while (!$completed) {
-                    if ($space->name == "Employee Network")
-                        $filter = array("limit" => $limit, 'offset' => $limit * $iteration, 'contact_type' => 'user');
-                    else
-                        $filter = array("limit" => $limit, 'offset' => $limit * $iteration, 'contact_type' => 'space');
-                    $contacts = PodioContact::get_for_space($space->space_id, $filter);
-                    RateLimitChecker::preventTimeOut();
-                    $contactsFile .= contacts2text($contacts);
-                    $iteration++;
-                    if (sizeof($contacts) < $limit) {
-                        $completed = true;
-                    }
-                }
+                if ($space->name == "Employee Network")
+                    $filter = array('contact_type' => 'user');
+                else
+                    $filter = array('contact_type' => 'space');
+                $contacts = PodioFetchAll::iterateApiCall('PodioContact::get_for_space', $space->space_id, $filter);
+                $contactsFile .= contacts2text($contacts);
             } catch (PodioError $e) {
                 $contactsFile .= "\n\nPodio Error:\n" . $e;
             }
@@ -236,116 +369,7 @@ function do_backup($downloadFiles) {
 
             foreach ($spaceApps as $app) {
 
-                $path_app = $path_space . '/' . fixDirName($app->config['name']);
-
-                if ($verbose)
-                    echo "App: " . $app->config['name'] . "\n";
-
-                mkdir($path_app);
-
-                //$itemFile = PodioItem::xlsx( $app->app_id , array("limit" => 1000) );
-                //file_put_contents($backupTo.'/'.$timeStamp.'/'.$org->name.'/'.$space->name.'/'.$app->config['name'].'.xlsx', $itemFile);
-
-                $appFile = "";
-                $limit = 200;
-                $iteration = 0;
-                $completed = false;
-
-                $appFiles = array();
-
-                $files_in_app_html = "<html><head><title>Files in app: " . $app->config['name'] . "</title></head><body>" .
-                        "<table border=1><tr><th>name</th><th>link</th><th>context</th></tr>";
-                try {
-                    #TODO: why this filter here? what about other files?
-                    $appFiles = PodioFile::get_for_app($app->app_id, array('attached_to' => 'item'));
-                    RateLimitChecker::preventTimeOut();
-                } catch (PodioError $e) {
-                    error_log($e);
-                }
-
-                try {
-                    while (!$completed) {
-                        $filter = array("limit" => $limit, 'offset' => $limit * $iteration);
-                        $items = PodioItem::filter($app->app_id, $filter);
-                        RateLimitChecker::preventTimeOut();
-                        if (is_array($items) && isset($items['items']) && is_array($items['items'])) {
-                            foreach ($items['items'] as $item) {
-                                if ($verbose)
-                                    echo " - " . $item->title . "\n";
-
-                                $itemFile = '--- ' . $item->title . ' ---' . "\n";
-                                $itemFile .= 'Item ID: ' . $item->item_id . "\n";
-                                foreach ($item->fields as $field) {
-                                    $itemFile .= $field->label . ': ' . getFieldValue($field) . "\n";
-                                }
-                                $itemFile .= "\n";
-                                $folder_item = fixDirName($item->item_id . '_' . $item->title);
-                                $path_item = $path_app . '/' . $folder_item;
-                                mkdir($path_item);
-                                  
-                                if ($downloadFiles) {
-                                    foreach ($appFiles as $file) {                                      
-                                
-                                        if ($file->context['type'] == 'item' && $file->context['id'] == $item->item_id) {
-                                            $link = downloadFileIfHostedAtPodio($path_item, $file);
-                                            # $link is relative to $path_item (if downloaded):
-                                            if (!preg_match("/^http/i", $link)) {
-                                                $link = RelativePaths::getRelativePath($path_app, $path_item.'/'.$link);
-                                            }
-                                            $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
-                                        }
-                                    }
-                                    #TODO FIXME: the following is probably not working:
-                                    //(does it differntiant between podio and non-podio files??)
-                                    // furthermore: this should only be duplicates to the above.
-                                    if (isset($item->files) && sizeof($item->files) > 0) {
-                                        foreach ($item->files as $file) {
-                                            $link = downloadFileIfHostedAtPodio($path_item, $file);
-                                            # $link is relative to $path_item (if downloaded):
-                                            if (!preg_match("/^http/i", $link)) {
-                                                $link = RelativePaths::getRelativePath($path_app, $path_item.'/'.$link);
-                                            }
-                                            $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
-                                        }
-                                    }
-                                }
-
-                                //TODO refactor to use less api calls:
-                                $comments = PodioComment::get_for('item', $item->item_id);
-                                RateLimitChecker::preventTimeOut();
-                                
-                                $commentsFile = "\n\nComments\n--------\n\n";
-                                foreach ($comments as $comment) {
-                                    $commentsFile .= 'by ' . $comment->created_by->name . ' on ' . $comment->created_on->format('Y-m-d at H:i:s') . "\n----------------------------------------\n" . $comment->value . "\n\n\n";
-                                    if ($downloadFiles && isset($comment->files) && sizeof($comment->files) > 0) {
-                                        foreach ($comment->files as $file) {
-                                            $link = downloadFileIfHostedAtPodio($path_item, $file);
-                                            # $link is relative to $path_item (if downloaded):
-                                            if (!preg_match("/^http/i", $link)) {
-                                                $link = RelativePaths::getRelativePath($path_app, $path_item.'/'.$link);
-                                            }
-                                            $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
-                                        }
-                                    }
-                                }
-                                file_put_contents($path_item . '/' . fixDirName($item->item_id . '-' . $item->title) . '.txt', $itemFile . $commentsFile);
-                                $appFile .= $itemFile . "\n\n";
-                                }
-                            $iteration++;
-                            if (sizeof($items['items']) < $limit) {
-                                $completed = true;
-                               }
-                        } else {
-                            $completed = true;
-                            }
-                    }
-                } catch (PodioError $e) {
-                    $appFile .= "\n\nPodio Error:\n" . $e;
-                }
-                file_put_contents($path_app . '/all_items_summary.txt', $appFile);
-                $files_in_app_html .= "</table></body></html>";
-                file_put_contents($path_app . "/files_in_app.html", $files_in_app_html);
-                 
+                backup_app($app, $path_space, $downloadFiles);
             }
         }
     }
@@ -476,7 +500,7 @@ function contacts2text($contacts) {
 function fixDirName($name) {
     $name = preg_replace("/[^.a-zA-Z0-9_-]/", '', $name);
 
-    $name = substr($name, 0, 20);
+    $name = substr($name, 0, 25);
     return $name;
 }
 
@@ -494,7 +518,7 @@ function br2nl($string) {
  * i.e. you wont get the file but an html login page.)
  *
  * Uses the file $config['backupTo'].'/filestore.php' to assure no file is downloaded twice.
- * (over incremental backups)
+ * (over incremental backups). Creates a (sym)link to the original file in case.
  *
  * @param type $folder
  * @param type $file
@@ -513,15 +537,19 @@ function downloadFileIfHostedAtPodio($folder, $file) {
         if (file_exists($filenameFilestore)) {
             $filestore = unserialize(file_get_contents($filenameFilestore));
         }
+        $filename = fixDirName($file->name);
+        while(file_exists($folder . '/' . $filename))
+                $filename = 'Z' . $filename;
         if (array_key_exists($file->file_id, $filestore)) {
 
             echo "DEBUG: Detected duplicate download for file: $file->file_id\n";
             $existing_file = realpath($config['backupTo'] . '/' . $filestore[$file->file_id]);
             $link = RelativePaths::getRelativePath($folder, $existing_file);
+            link($existing_file, $folder . '/' . $filename);
+            #symlink($existing_file, $folder.'/'.$filename);
         } else {
 
             try {
-                $filename = fixDirName($file->name);
                 file_put_contents($folder . '/' . $filename, $file->get_raw());
                 RateLimitChecker::preventTimeOut();
                 $link = $filename;
@@ -539,6 +567,7 @@ function downloadFileIfHostedAtPodio($folder, $file) {
     } else {
         #echo "Warning: Not downloading file hosted by ".$file->hosted_by."\n";
     }
+    unset($filestore);
     return $link;
 }
 

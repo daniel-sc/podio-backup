@@ -52,7 +52,7 @@ class RelativePaths {
             }
         }
         $result = implode('/', $relPath);
-        echo "result=$result\n";
+        #echo "result=$result\n";
         return $result;
     }
 

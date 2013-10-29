@@ -1,10 +1,6 @@
 <?php
 
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
+#require_once '../podio-php/PodioAPI.php'; // include the php Podio Master Class
 
 class RateLimitChecker {
 
@@ -12,7 +8,49 @@ class RateLimitChecker {
      *
      * @var int estimate for remaining rate limited calls.
      */
-    private static $rate_limit_estimate = 250;
+    private static $rate_limit_lower = 250;
+    private static $no_of_estimations = 0;
+
+    /**
+     * Go into wait state when remaining rate limit calls are less than $stop_limit.
+     * This should _not_ be 1, as due to estimations the remaining might be incorrect.
+     * 
+     * @var int 
+     */
+    public static $stop_limit = 20;
+
+    /**
+     *
+     * @var int remaining non-rate limited calls. 
+     */
+    public static $rate_limit = 5000;
+
+    /**
+     * This is the time of the first call for the current rate limit count.
+     * @var type 
+     */
+    public static $start;
+
+    /**
+     * If neccessary performes an dummy call and calls self::prefentTimeOut() (recursively).
+     * Assumes self::$no_of_estimations to be set correctly.
+     * 
+     * @param int $remaining
+     * @return boolean true, if was considered neccessary and was performed.
+     */
+    private static function dummyCallNeccessary($remaining) {
+        global $verbose;
+        //the worst case scenario is: for every estimate, 2 calls were conducted (authentication..)
+        // https://help.podio.com/entries/22140932-Confused-by-rate-limit
+        if ($remaining - self::$no_of_estimations < self::$stop_limit) {
+            if (isset($verbose) && $verbose)
+                echo "performing dummy request for retriving current rate limit..\n";
+            PodioSearchResult::search($attributes = array('query' => 'dummy_query_for_getting_remaining_rate_limit_after_file_get_raw', 'limit' => 1));
+            self::preventTimeOut();
+            return true;
+        }
+        return false;
+    }
 
     /**
      * If getting close to hitting the rate limit, this method blocks until the
@@ -27,35 +65,46 @@ class RateLimitChecker {
      */
     public static function preventTimeOut() {
         global $verbose;
-
-        //Note: after PodioFile->get_raw() Podio::rate_limit_remaining() leads to errors, since the header is not set.
-        if (array_key_exists('x-rate-limit-remaining', Podio::$last_response->headers))
-            $remaining = Podio::$last_response->headers['x-rate-limit-remaining'];
-        else {
-            if ($verbose)
-                echo "DEBUG: estimating remaining..\n";
-            $remaining = --self::$rate_limit_estimate;
+        if (!isset(self::$start)) {
+            echo "init RateLimitChecker..\n";
+            self::$start = time();
         }
 
-
-        if (array_key_exists('x-rate-limit-limit', Podio::$last_response->headers))
+        //Note: after PodioFile->get_raw() Podio::rate_limit_remaining() leads to errors, since the header is not set.
+        if (array_key_exists('x-rate-limit-remaining', Podio::$last_response->headers)) {
+            $remaining = Podio::$last_response->headers['x-rate-limit-remaining'];
             $limit = Podio::$last_response->headers['x-rate-limit-limit'];
-        else
+            if ($limit == 250) {
+                self::$no_of_estimations = 0;
+            }
+        } else {
+            $remaining = --self::$rate_limit_lower;
+            self::$no_of_estimations++;
             $limit = 250;
+        }
 
         if ($limit == 250)
-            self::$rate_limit_estimate = $remaining;
+            self::$rate_limit_lower = $remaining;
+        else
+            self::$rate_limit = $remaining;
 
-        if ($verbose)
-            echo "DEBUG: rate_limit=" . $limit . " remaining=" . $remaining . "\n";
+        if (isset($verbose) && $verbose) {
+            echo "DEBUG: rate_limit=$limit remaining=$remaining "
+            . (array_key_exists('x-rate-limit-remaining', Podio::$last_response->headers) ? "" : "(estimate)") . "\n";
+        }
 
-        if ($remaining != 0 && $remaining < 10) { //could technically be '< 1' ..
-            $minutes_till_reset = 60 - date('i');
+        if (self::dummyCallNeccessary($remaining))
+            return;
+
+        if ($remaining < self::$stop_limit) {
+            echo "running since " . date('H:i', self::$start) . "\n";
+            $minutes_till_reset = (self::$start - time()) / 60 + 1;
             echo "sleeping $minutes_till_reset minutes to prevent rate limit violation.\n";
             sleep(60 * $minutes_till_reset);
-            self::$rate_limit_estimate = 250;
+            self::$rate_limit_lower = 250;
+            self::$rate_limit = 5000;
+            self::$start = time();
         }
     }
 
 }
-

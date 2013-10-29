@@ -10,9 +10,9 @@
  * TODOS:
  * a) incremental backup - especially for files (done)
  * b) non item/comment scoped files e.g. app/space..
- * c) optimize fetching comments partly done.
+ * c) optimize fetching comments: partly done.
  * d) are all files downloaded? done.
- * e) no double files..
+ * e) no double files.. done.
  *
  *  Please post something nice on your website or blog, and link back to www.podiomail.com if you find this script useful.
  * ===================================================================== */
@@ -110,17 +110,17 @@ function check_config() {
     try {
         Podio::setup($config['podioClientId'], $config['podioClientSecret']);
     } catch (PodioError $e) {
-        show_error("ERROR: Podio Authentication Failed. Please check the API key and user details.");
+        show_error("Podio Authentication Failed. Please check the API key and user details.");
         return false;
     }
     try {
         Podio::authenticate('password', array('username' => $config['podioUser'], 'password' => $config['podioPassword']));
     } catch (PodioError $e) {
-        show_error("ERROR: Podio Authentication Failed. Please check the API key and user details.");
+        show_error("Podio Authentication Failed. Please check the API key and user details.");
         return false;
     }
     if (!Podio::is_authenticated()) {
-        show_error("ERROR: Podio Authentication Failed. Please check the API key and user details.");
+        show_error("Podio Authentication Failed. Please check the API key and user details.");
         return false;
     }
     return true;
@@ -160,7 +160,7 @@ function show_success($message) {
 /**
  * Backups $app to a subfolder in $path
  * 
- * @param typ $app app to backup
+ * @param type $app app to backup
  * @param type $path in this folder a subfolder for the app will be created
  */
 function backup_app($app, $path, $downloadFiles) {
@@ -168,9 +168,10 @@ function backup_app($app, $path, $downloadFiles) {
 
     global $verbose;
 
-    if ($verbose)
+    if ($verbose) {
         echo "App: " . $app->config['name'] . "\n";
-    echo "debug: MEMORY: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+        echo "debug: MEMORY: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
+    }
 
     mkdir($path_app);
 
@@ -182,36 +183,31 @@ function backup_app($app, $path, $downloadFiles) {
             "<table border=1><tr><th>name</th><th>link</th><th>context</th></tr>";
     try {
         #$appFiles = PodioFile::get_for_app($app->app_id, array('attached_to' => 'item'));
-        echo "debug: MEMORY before fetch   files: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
         $appFiles = PodioFetchAll::iterateApiCall('PodioFile::get_for_app', $app->app_id, array());
-        echo "debug: MEMORY after  fetch   files: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
         #var_dump($appFiles);
         PodioFetchAll::flattenObjectsArray($appFiles, PodioFetchAll::podioElements(
             array('file_id' => null, 'name' => null, 'link' => null, 'hosted_by' => null,
                 'context' => array('id' => NULL, 'type' => null, 'title' => null))));
-        echo "debug: MEMORY after  flatten files: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
         if ($verbose)
             echo "fetched information for " . sizeof($appFiles) . " files in app.\n";
     } catch (PodioError $e) {
-        error_log($e);
+        show_error($e);
     }
 
 
     try {
-        $allitems = PodioFetchAll::iterateApiCall('PodioItem::filter', $app->app_id, array(), 500, 'items');
+        $allitems = PodioFetchAll::iterateApiCall('PodioItem::filter', $app->app_id, array(), 400, 'items');
 
         echo "app contains " . sizeof($allitems) . " items.\n";
-
-        echo "debug: MEMORY before xls-download : " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
 
         $step_xlsx = 500;
         for ($i = 0; $i < sizeof($allitems); $i+=$step_xlsx) {
             $itemFile = PodioItem::xlsx($app->app_id, array("limit" => $step_xlsx, "offset" => $i));
+            RateLimitChecker::preventTimeOut();
             file_put_contents($path_app . '/' . $app->config['name'] . '_' . $i . '.xlsx', $itemFile);
             unset($itemFile);
         }
-        echo "debug: MEMORY after  xls-download : " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
-
+        
         $before = time();
         gc_collect_cycles();
         echo "gc took : " . (time() - $before) . " seconds.\n";
@@ -297,6 +293,7 @@ function backup_app($app, $path, $downloadFiles) {
             }
         }
     } catch (PodioError $e) {
+        show_error($e);
         $appFile .= "\n\nPodio Error:\n" . $e;
     }
     file_put_contents($path_app . '/all_items_summary.txt', $appFile);
@@ -337,6 +334,7 @@ function do_backup($downloadFiles) {
             $contacts = PodioFetchAll::iterateApiCall('PodioContact::get_for_org', $org->org_id);
             $contactsFile .= contacts2text($contacts);
         } catch (PodioError $e) {
+            show_error($e);
             $contactsFile .= "\n\nPodio Error:\n" . $e;
         }
         file_put_contents($path_org . '/' . 'podio_organization_contacts.txt', $contactsFile);
@@ -356,6 +354,7 @@ function do_backup($downloadFiles) {
                 $contacts = PodioFetchAll::iterateApiCall('PodioContact::get_for_space', $space->space_id, $filter);
                 $contactsFile .= contacts2text($contacts);
             } catch (PodioError $e) {
+                show_error($e);
                 $contactsFile .= "\n\nPodio Error:\n" . $e;
             }
             file_put_contents($path_space . '/' . 'podio_space_contacts.txt', $contactsFile);
@@ -363,8 +362,9 @@ function do_backup($downloadFiles) {
             $spaceApps = array();
             try {
                 $spaceApps = PodioApp::get_for_space($space->space_id);
+                RateLimitChecker::preventTimeOut();
             } catch (PodioError $e) {
-                error_log($e);
+                show_error($e);
             }
 
             foreach ($spaceApps as $app) {

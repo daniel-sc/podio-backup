@@ -25,14 +25,12 @@ class PodioFetchAll {
      * @return type array of all fetched elements
      */
     static function iterateApiCall($function, $id, $params = array(), $limit = 100, $resulttype = null) {
-        echo "iterateApiCall-start: MEMORY: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
         $completed = false;
         $iteration = 0;
         $result = array();
         while (!$completed) {
             #$tmp_result = $function($id, array_merge($params, array("limit" => $limit, 'offset' => $limit * $iteration)));
             $tmp_result = call_user_func($function, $id, array_merge($params, array('limit' => $limit, 'offset' => $limit * $iteration)));
-            #var_dump($tmp_result);
             RateLimitChecker::preventTimeOut();
             #echo "done iteration $iteration\n";
             $iteration++;
@@ -57,7 +55,6 @@ class PodioFetchAll {
             }
             unset($tmp_result);
         }
-        echo "iterateApiCall-end  : MEMORY: " . memory_get_usage(true) . " | " . memory_get_usage(false) . "\n";
         return $result;
     }
 

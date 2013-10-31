@@ -10,4 +10,4 @@ stored_parameters.txt
 backup*
 bak*
 /nbproject/
-/out.out
+/*.out

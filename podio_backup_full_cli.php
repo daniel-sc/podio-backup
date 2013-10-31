@@ -3,17 +3,14 @@
 /* =====================================================================
  * podio_backup.php
  * This script backs up your entire Podio account.
- * (c) 2013 Globi Web Solutions
+ * [(c) 2013 Globi Web Solutions]
  * v1.3 2013-10-03 - Andreas Huttenrauch
  * v1.4 2013-10-18 - Daniel Schreiber
+ * v2.0 2013-10-31 - Daniel Schreiber
+ * 
  *
- * TODOS:
- * a) incremental backup - especially for files (done)
- * b) non item/comment scoped files e.g. app/space..
- * c) optimize fetching comments: partly done.
- * d) are all files downloaded? done.
- * e) no double files.. done.
- *
+ *  https://github.com/daniel-sc/podio-backup 
+ * 
  *  Please post something nice on your website or blog, and link back to www.podiomail.com if you find this script useful.
  * ===================================================================== */
 
@@ -22,6 +19,10 @@ require_once '../podio-php/PodioAPI.php'; // include the php Podio Master Class
 require_once 'RelativePaths.php';
 require_once 'RateLimitChecker.php';
 require_once 'PodioFetchAll.php';
+
+define('FILE_GET_FOR_APP_LIMIT', 100);
+define('ITEM_FILTER_LIMIT', 500);
+define('ITEM_XLSX_LIMIT', 500);
 
 Podio::$debug = true;
 
@@ -34,7 +35,6 @@ $start = time();
 global $config;
 $config_command_line = getopt("fvs:l:", array("backupTo:", "podioClientId:", "podioClientSecret:", "podioUser:", "podioPassword:", "help"));
 
-//var_dump($config_command_line);
 $usage = "\nUsage:\n\n" .
         "php podio-backup-php [-f] [-v] [-s PARAMETER_FILE] --backupTo BACKUP_FOLDER" .
         " --podioClientId PODIO_CLIENT_ID --podioClientSecret PODIO_CLIENT_SECRET " .
@@ -183,11 +183,11 @@ function backup_app($app, $path, $downloadFiles) {
             "<table border=1><tr><th>name</th><th>link</th><th>context</th></tr>";
     try {
         #$appFiles = PodioFile::get_for_app($app->app_id, array('attached_to' => 'item'));
-        $appFiles = PodioFetchAll::iterateApiCall('PodioFile::get_for_app', $app->app_id, array());
+        $appFiles = PodioFetchAll::iterateApiCall('PodioFile::get_for_app', $app->app_id, array(), FILE_GET_FOR_APP_LIMIT);
         #var_dump($appFiles);
         PodioFetchAll::flattenObjectsArray($appFiles, PodioFetchAll::podioElements(
-            array('file_id' => null, 'name' => null, 'link' => null, 'hosted_by' => null,
-                'context' => array('id' => NULL, 'type' => null, 'title' => null))));
+                        array('file_id' => null, 'name' => null, 'link' => null, 'hosted_by' => null,
+                            'context' => array('id' => NULL, 'type' => null, 'title' => null))));
         if ($verbose)
             echo "fetched information for " . sizeof($appFiles) . " files in app.\n";
     } catch (PodioError $e) {
@@ -196,18 +196,17 @@ function backup_app($app, $path, $downloadFiles) {
 
 
     try {
-        $allitems = PodioFetchAll::iterateApiCall('PodioItem::filter', $app->app_id, array(), 400, 'items');
+        $allitems = PodioFetchAll::iterateApiCall('PodioItem::filter', $app->app_id, array(), ITEM_FILTER_LIMIT, 'items');
 
         echo "app contains " . sizeof($allitems) . " items.\n";
 
-        $step_xlsx = 500;
-        for ($i = 0; $i < sizeof($allitems); $i+=$step_xlsx) {
-            $itemFile = PodioItem::xlsx($app->app_id, array("limit" => $step_xlsx, "offset" => $i));
+        for ($i = 0; $i < sizeof($allitems); $i+=ITEM_XLSX_LIMIT) {
+            $itemFile = PodioItem::xlsx($app->app_id, array("limit" => ITEM_XLSX_LIMIT, "offset" => $i));
             RateLimitChecker::preventTimeOut();
             file_put_contents($path_app . '/' . $app->config['name'] . '_' . $i . '.xlsx', $itemFile);
             unset($itemFile);
         }
-        
+
         $before = time();
         gc_collect_cycles();
         echo "gc took : " . (time() - $before) . " seconds.\n";
@@ -304,14 +303,9 @@ function backup_app($app, $path, $downloadFiles) {
 }
 
 function do_backup($downloadFiles) {
-    global $config, $verbose, $start;
+    global $config, $verbose;
     if ($verbose)
         echo "Warning: This script may run for a LONG time\n";
-
-    ///stores downloaded files ids to assure no file is downloaded twice.
-    ///(Which is suspect since files are fetched for app AND item AND comment.)
-    global $downloadedFilesIds;
-    $downloadedFilesIds = array();
 
     $currentdir = getcwd();
     $timeStamp = date('Y-m-d_H-i');
@@ -538,8 +532,8 @@ function downloadFileIfHostedAtPodio($folder, $file) {
             $filestore = unserialize(file_get_contents($filenameFilestore));
         }
         $filename = fixDirName($file->name);
-        while(file_exists($folder . '/' . $filename))
-                $filename = 'Z' . $filename;
+        while (file_exists($folder . '/' . $filename))
+            $filename = 'Z' . $filename;
         if (array_key_exists($file->file_id, $filestore)) {
 
             echo "DEBUG: Detected duplicate download for file: $file->file_id\n";

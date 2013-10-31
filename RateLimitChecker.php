@@ -83,27 +83,29 @@ class RateLimitChecker {
             $limit = 250;
         }
 
-        if ($limit == 250)
+        if ($limit == 250) {
             self::$rate_limit_lower = $remaining;
-        else
+        } else {
             self::$rate_limit = $remaining;
+        }
 
         if (isset($verbose) && $verbose) {
             echo "DEBUG: rate_limit=$limit remaining=$remaining "
             . (array_key_exists('x-rate-limit-remaining', Podio::$last_response->headers) ? "" : "(estimate)") . "\n";
         }
 
-        if (self::dummyCallNeccessary($remaining))
-            return;
-
         if ($remaining < self::$stop_limit) {
             echo "running since " . date('H:i', self::$start) . "\n";
-            $minutes_till_reset = (self::$start - time()) / 60 + 1;
+            $minutes_till_reset = 60 - ((time() - self::$start) / 60) + 1;
             echo "sleeping $minutes_till_reset minutes to prevent rate limit violation.\n";
             sleep(60 * $minutes_till_reset);
             self::$rate_limit_lower = 250;
             self::$rate_limit = 5000;
             self::$start = time();
+        } else {
+            if (self::dummyCallNeccessary($remaining)) {
+                return;
+            }
         }
     }
 

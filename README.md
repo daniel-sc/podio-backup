@@ -14,11 +14,11 @@ Features include:
 
 Usage:
 ----------
-    php podio_backup_full.php [-f] [-v] [-s PARAMETER_FILE] --backupTo BACKUP_FOLDER --podioClientId PODIO_CLIENT_ID --podioClientSecret PODIO_CLIENT_SECRET --podioUser PODIO_USERNAME --podioPassword PODIO_PASSWORD
+    php podio_backup_full_cli.php [-f] [-v] [-s PARAMETER_FILE] --backupTo BACKUP_FOLDER --podioClientId PODIO_CLIENT_ID --podioClientSecret PODIO_CLIENT_SECRET --podioUser PODIO_USERNAME --podioPassword PODIO_PASSWORD
     
-    php podio_backup_full.php [-f] [-v] -l PARAMETER_FILE [--backupTo BACKUP_FOLDER] [--podioClientId PODIO_CLIENT_ID] [--podioClientSecret PODIO_CLIENT_SECRET] [--podioUser PODIO_USERNAME] [--podioPassword PODIO_PASSWORD]
+    php podio_backup_full_cli.php [-f] [-v] -l PARAMETER_FILE [--backupTo BACKUP_FOLDER] [--podioClientId PODIO_CLIENT_ID] [--podioClientSecret PODIO_CLIENT_SECRET] [--podioUser PODIO_USERNAME] [--podioPassword PODIO_PASSWORD]
 
-    php podio_backup_full.php --help
+    php podio_backup_full_cli.php --help
 
     Arguments:
        -f	download files from podio (rate limit of 250/h applies!)

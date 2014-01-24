@@ -36,13 +36,13 @@ global $config;
 $config_command_line = getopt("fvs:l:", array("backupTo:", "podioClientId:", "podioClientSecret:", "podioUser:", "podioPassword:", "help"));
 
 $usage = "\nUsage:\n\n" .
-        "php podio-backup-php [-f] [-v] [-s PARAMETER_FILE] --backupTo BACKUP_FOLDER" .
+        "php podio_backup_full_cli [-f] [-v] [-s PARAMETER_FILE] --backupTo BACKUP_FOLDER" .
         " --podioClientId PODIO_CLIENT_ID --podioClientSecret PODIO_CLIENT_SECRET " .
         "--podioUser PODIO_USERNAME --podioPassword PODIO_PASSWORD\n\n" .
-        "php podio-backup-php [-f] [-v] -l PARAMETER_FILE [--backupTo BACKUP_FOLDER]" .
+        "php podio_backup_full_cli [-f] [-v] -l PARAMETER_FILE [--backupTo BACKUP_FOLDER]" .
         " [--podioClientId PODIO_CLIENT_ID] [--podioClientSecret PODIO_CLIENT_SECRET] " .
         "[--podioUser PODIO_USERNAME] [--podioPassword PODIO_PASSWORD]\n\n" .
-        "php podio-backup-php --help" .
+        "php podio_backup_full_cli --help" .
         "\n\nArguments:\n" .
         "   -f\tdownload files from podio (rate limit of 250/h applies!)\n" .
         "   -v\tverbose\n" .

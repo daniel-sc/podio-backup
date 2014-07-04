@@ -1,0 +1,3 @@
+[submodule "podio-php"]
+	path = podio-php
+	url = https://github.com/podio/podio-php.git

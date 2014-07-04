@@ -14,7 +14,7 @@
  *  Please post something nice on your website or blog, and link back to www.podiomail.com if you find this script useful.
  * ===================================================================== */
 
-require_once '../podio-php/PodioAPI.php'; // include the php Podio Master Class
+require_once 'podio-php/PodioAPI.php'; // include the php Podio Master Class
 
 require_once 'RelativePaths.php';
 require_once 'RateLimitChecker.php';

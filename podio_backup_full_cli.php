@@ -18,6 +18,7 @@ require_once 'podio-php/PodioAPI.php'; // include the php Podio Master Class
 
 require_once 'RelativePaths.php';
 require_once 'RateLimitChecker.php';
+require_once 'HumanFormat.php';
 require_once 'PodioFetchAll.php';
 
 define('FILE_GET_FOR_APP_LIMIT', 100);
@@ -221,12 +222,8 @@ function backup_app($app, $path, $downloadFiles) {
             mkdir($path_item);
 
             unset($itemFile);
-            $itemFile = '--- ' . $item->title . ' ---' . "\n";
-            $itemFile .= 'Item ID: ' . $item->item_id . "\n";
-            foreach ($item->fields as $field) {
-                $itemFile .= $field->label . ': ' . getFieldValue($field) . "\n";
-            }
-            $itemFile .= "\n";
+
+            $itemFile = HumanFormat::toHumanReadableString($item);
 
             if ($downloadFiles) {
                 foreach ($appFiles as $file) {
@@ -370,75 +367,6 @@ function do_backup($downloadFiles) {
 
     if ($verbose)
         show_success("Backup Completed successfully to " . $currentdir . "/" . $backupTo . "/" . $timeStamp);
-}
-
-// given a podio field object -> returns a human readable format of the field value (or app reference as array (app_id, item_id)
-function getFieldValue($field) {
-    //$value = $field->values;
-    $value = "";
-    if ($field->type == "text" || $field->type == "number" || $field->type == "progress" || $field->type == "state") {
-        if (is_array($field->values) && sizeof($field->values) > 0) {
-            $value = $field->values[0]['value'];
-            $value = str_ireplace('</p>', '</p><br>', $value);
-            $value = preg_replace('/\<br(\s*)?\/?\>/i', "\n", $value);
-            $value = strip_tags(br2nl($value));
-            $value = str_replace('&nbsp;', ' ', $value);
-            $value = str_replace('&amp;', '&', $value);
-        }
-    }
-    if ($field->type == "category") {
-        $value = fieldFindAll($field->values, 'text', '');
-    }
-    if ($field->type == "contact") {
-        $value = fieldFindAll($field->values, 'name', '') . ' (email: ' . fieldFindAll($field->values, 'mail', '') . ')';
-        $phone = fieldFindAll($field->values, 'phone', '');
-        if ($phone != "")
-            $value .= ' [phone: ' . $phone . ']';
-    }
-    if ($field->type == "embed") {
-        $value = fieldFindAll($field->values, 'original_url', '');
-    }
-    if ($field->type == "app") {
-        //$value = array('app_id' => fieldFindAll($field->values, 'app_id', ''), 'itemid' => fieldFindAll($field->values, 'item_id', ''));
-        $value = 'App: ' . fieldFindAll($field->values, 'app_id', '') . ', Item: ' . fieldFindAll($field->values, 'item_id', '');
-        //$value = $field->values;
-    }
-    return $value;
-}
-
-// used by getFieldValue - recurses array
-function fieldFindAll($arr, $type, $val) {
-    foreach ($arr as $k => $v) {
-        if ($k === $type) {
-            if ($type == "mail") {
-                $v = implode(',', $v);
-                if ($val == "")
-                    $val = $v;
-                else
-                    $val .= ',' . $v;
-            } elseif ($type == "phone") {
-                $v = implode(',', $v);
-                if ($val == "")
-                    $val = $v;
-                else
-                    $val .= ',' . $v;
-            } else {
-                if ($val == "")
-                    $val = $v;
-                else
-                    $val .= ',' . $v;
-            }
-        } elseif (is_array($v)) {
-            $more = fieldFindAll($v, $type, '');
-            if ($more != "") {
-                if ($val == "")
-                    $val = $more;
-                else
-                    $val .= ',' . $more;
-            }
-        }
-    }
-    return $val;
 }
 
 function contacts2text($contacts) {

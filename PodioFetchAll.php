@@ -33,8 +33,20 @@ class PodioFetchAll {
             $tmp_result = call_user_func($function, $id, array_merge($params, array('limit' => $limit, 'offset' => $limit * $iteration)));
             RateLimitChecker::preventTimeOut();
             #echo "done iteration $iteration\n";
+            
             $iteration++;
-            if (isset($resulttype)) {
+            
+            if ($tmp_result instanceof PodioCollection) {
+                $result = array_merge($result, $tmp_result->_get_items());
+                if ($tmp_result instanceof PodioItemCollection) {
+                    echo "filtered: $tmp_result->filtered, total: $tmp_result->total (limit: $limit)\n";
+                    if (sizeof($tmp_result->_get_items()) < $limit) {
+                        $completed = true;
+                    }
+                } else {
+                    echo "WARNING unexpected collection: " . get_class($tmp_result);
+                }
+            } else if (isset($resulttype)) {
                 if (is_array($tmp_result) && isset($tmp_result[$resulttype]) && is_array($tmp_result[$resulttype])) {
                     $result = array_merge($result, $tmp_result[$resulttype]);
                     if (sizeof($tmp_result[$resulttype]) < $limit) {

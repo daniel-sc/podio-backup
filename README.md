@@ -31,5 +31,4 @@ Usage:
 Installation:
 ------------------
 After cloning the repository don't forget to initialize the podio-php submodule via:
-    git submodule init
-    git submodule update
+`git submodule init` and subsequent `git submodule update`.

@@ -27,3 +27,9 @@ Usage:
        -l	load parameters from PARAMETER_FILE (parameters can be overwritten by command line parameters)
      
     BACKUP_FOLDER represents a (incremental) backup storage. I.e. consecutive backups only downloads new files.
+
+Installation:
+------------------
+After cloning the repository don't forget to initialize the podio-php submodule via:
+    git submodule init
+    git submodule update

@@ -21,9 +21,13 @@ class HumanFormat {
     public static function toHumanReadableString($item) {
         $itemFile = '--- ' . $item->title . ' ---' . "\n";
         $itemFile .= 'Item ID: ' . $item->item_id . "\n";
+        $itemImages = array();
         if ($item instanceof PodioItem) {
             foreach ($item->fields as $field) {
-                if ($field instanceof PodioItemField) {
+                if($field instanceof PodioImageItemField) {
+                    $itemImages = $field->values;
+                    $itemFile .= $field->label . ': ' . HumanFormat::getFieldValue($field) . "\n";
+                } elseif ($field instanceof PodioItemField) {
                     $itemFile .= $field->label . ': ' . HumanFormat::getFieldValue($field) . "\n";
                 } else {
                     echo "WARN non PodioItemField:";
@@ -38,7 +42,7 @@ class HumanFormat {
             }
         }
         $itemFile .= "\n";
-        return $itemFile;
+        return array($itemFile, $itemImages);
     }
 
     /**

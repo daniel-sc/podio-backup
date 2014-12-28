@@ -5,6 +5,8 @@ Creating a "maximum complete" backup of data stored at Podio (including files).
 
 This runs as php commandline script (cli) and is based on: http://www.podiomail.com/blog/easy-podio-full-backup.php (thanks!)
 
+A superior (hosted) backup solution is found at https://www.cloud-backup-for-podio.com (check it out!).
+
 Features include:
 -------------------------
 - _Incremental backup_ (files are downloaded only once and are linked on subsequent runs).

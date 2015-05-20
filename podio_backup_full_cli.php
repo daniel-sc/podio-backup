@@ -89,13 +89,17 @@ echo "Duration: $total_time minutes.\n";
 
 function check_backup_folder() {
     global $config;
+    if (!isset($config['backupTo'])) {
+	show_error("backupTo variable needs to be defined");
+        exit();
+    }
     $folder = $config['backupTo'];
     if (!is_dir($folder)) {
-        show_error("ERROR: create a backup folder called '" . $folder . "'");
+        show_error("create a backup folder called '" . $folder . "'");
         exit();
     }
     if (!is_writeable($folder)) {
-        show_error("ERROR: please make sure that the " . $folder . " directory is writeable and has 777 permissions set");
+        show_error("please make sure that the " . $folder . " directory is writeable and has 777 permissions set");
         exit();
     }
     if (!file_exists($folder . "/.htaccess")) {

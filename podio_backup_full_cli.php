@@ -76,6 +76,14 @@ $downloadFiles = array_key_exists("f", $config);
 global $verbose;
 $verbose = array_key_exists("v", $config);
 
+$variables = array('backupTo','podioClientId','podioClientSecret','podioUser','podioPassword');
+foreach ($variables as $var) {
+    if (!isset($config[$var])) {
+        show_error("Variable $var needs to be defined");
+        return -1;
+    }
+}
+
 check_backup_folder();
 
 if (check_config()) {
@@ -90,10 +98,6 @@ echo "Duration: $total_time minutes.\n";
 
 function check_backup_folder() {
     global $config;
-    if (!isset($config['backupTo'])) {
-	show_error("backupTo variable needs to be defined");
-        exit();
-    }
     $folder = $config['backupTo'];
     if (!is_dir($folder)) {
         show_error("create a backup folder called '" . $folder . "'");

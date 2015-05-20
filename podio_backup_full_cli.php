@@ -223,6 +223,8 @@ function backup_app($app, $path, $downloadFiles) {
 
         foreach ($allitems as $item) {
 
+            // print_r($item);
+
             if ($verbose)
                 echo " - " . $item->title . "\n";
 
@@ -232,7 +234,7 @@ function backup_app($app, $path, $downloadFiles) {
 
             unset($itemFile);
 
-            $itemFile = HumanFormat::toHumanReadableString($item);
+            list($itemFile, $itemImages) = HumanFormat::toHumanReadableString($item);
 
             if ($downloadFiles) {
                 foreach ($appFiles as $file) {
@@ -248,6 +250,19 @@ function backup_app($app, $path, $downloadFiles) {
                     }
                 }
             }
+
+            /* */
+            if (sizeof($itemImages) > 0){
+                foreach ($itemImages as $file){
+                    $link = downloadFileIfHostedAtPodio($path_item, $file);
+                    if (!preg_match("/^http/i", $link)) {
+                        $link = RelativePaths::getRelativePath($path_app, $path_item . '/' . $link);
+                    }
+                    $itemFile .= "Image: $link\n";
+                    $files_in_app_html .= "<tr><td>" . $file->name . "</td><td><a href=\"" . $link . "\">" . $link . "</a></td><td>" . $file->context['title'] . "</td></tr>";
+                }
+            }
+            /* */
 
             //TODO refactor to use less api calls: (not possible??!)
             if ($item->comment_count > 0) {
@@ -431,7 +446,7 @@ function contacts2text($contacts) {
 function fixDirName($name) {
     $name = preg_replace("/[^.a-zA-Z0-9_-]/", '', $name);
 
-    $name = substr($name, 0, 25);
+    // $name = substr($name, 0, 25);
     return $name;
 }
 
@@ -471,6 +486,7 @@ function downloadFileIfHostedAtPodio($folder, $file) {
         $filename = fixDirName($file->name);
         while (file_exists($folder . '/' . $filename))
             $filename = 'Z' . $filename;
+
         if (array_key_exists($file->file_id, $filestore)) {
 
             echo "DEBUG: Detected duplicate download for file: $file->file_id\n";

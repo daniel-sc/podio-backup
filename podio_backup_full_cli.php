@@ -34,7 +34,7 @@ global $start;
 $start = time();
 
 global $config;
-$config_command_line = getopt("fvs:l:", array("backupTo:", "podioClientId:", "podioClientSecret:", "podioUser:", "podioPassword:", "help"));
+$config_command_line = getopt("fvs:l:h", array("backupTo:", "podioClientId:", "podioClientSecret:", "podioUser:", "podioPassword:", "help"));
 
 $usage = "\nUsage:\n\n" .
         "php podio_backup_full_cli [-f] [-v] [-s PARAMETER_FILE] --backupTo BACKUP_FOLDER" .
@@ -49,11 +49,12 @@ $usage = "\nUsage:\n\n" .
         "   -v\tverbose\n" .
         "   -s\tstore parameters in PARAMETER_FILE\n" .
         "   -l\tload parameters from PARAMETER_FILE (parameters can be overwritten by command line parameters)\n" .
+        "   -h\tshow this message" .
         " \n" .
         "BACKUP_FOLDER represents a (incremental) backup storage. " .
         "I.e. consecutive backups only downloads new files.\n";
 
-if (array_key_exists("help", $config_command_line)) {
+if (array_key_exists("help", $config_command_line) || array_key_exists("h", $config_command_line)) {
     echo $usage;
     return;
 }

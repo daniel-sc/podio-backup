@@ -431,7 +431,7 @@ function contacts2text($contacts) {
 function fixDirName($name) {
     $name = preg_replace("/[^.a-zA-Z0-9_-]/", '', $name);
 
-    $name = substr($name, 0, 25);
+    $name = substr($name, 0, 100);
     return $name;
 }
 

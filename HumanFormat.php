@@ -134,8 +134,19 @@ class HumanFormat {
             return HumanFormat::implodeStrings(" | ", $locations);
         }
 
-        echo "WARN unexpected type: ";
-        var_dump($field);
+	if ($field->type == "calculation" && isset($field->values)) {
+	    if(is_string($field->values)) {
+	        return $field->values;
+	    }
+	    if(is_array($field->values)) {
+		//Calculation field is a date
+		$calculations = $field->values;
+		return $calculations[0][start];
+	    }
+	}
+
+        echo "WARN unexpected type: $field->type\n";
+	print_r($field);
         return $field->values;
     }
 
